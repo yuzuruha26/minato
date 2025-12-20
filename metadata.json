@@ -1,0 +1,7 @@
+{
+  "name": "港のネコを守る会",
+  "description": "港湾地域の地域猫活動を支援するアプリ。餌やり区画の管理、猫のステータス記録、AIによる写真判定機能を備えています。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
