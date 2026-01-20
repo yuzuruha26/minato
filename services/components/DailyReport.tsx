@@ -1,7 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
-import { ArrowLeft, CheckCircle, AlertTriangle, Home, MapPin, ChevronDown, ChevronUp, FileText } from 'lucide-react';
-import { Cat, FeedingPoint, Zone } from '../types';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, CheckCircle, AlertTriangle, Home, MapPin, ChevronDown, ChevronUp, FileText, Loader2, Camera } from 'lucide-react';
+import { Cat, FeedingPoint, Zone, Report } from '../types';
+import { getDailySummary } from '../services/feedingRecord';
 
 interface DailyReportProps {
   date: Date;
@@ -13,7 +14,14 @@ interface DailyReportProps {
 }
 
 export const DailyReport: React.FC<DailyReportProps> = ({ date, onBack, onHome, cats, points, zones }) => {
-  // Format Date: 2025年1月1日 (水)
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<{
+    sickReports: any[];
+    unfedCats: Cat[];
+    totalUnfed: number;
+  } | null>(null);
+  const [expandedZones, setExpandedZones] = useState<Record<string, boolean>>({});
+
   const formattedDate = date.toLocaleDateString('ja-JP', {
     year: 'numeric',
     month: 'long',
@@ -21,57 +29,45 @@ export const DailyReport: React.FC<DailyReportProps> = ({ date, onBack, onHome, 
     weekday: 'short',
   });
 
-  // State for expanded zones in the unfed list
-  const [expandedZones, setExpandedZones] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      const data = await getDailySummary(date, cats);
+      
+      // マップ用に整形（sickReportsにポイント名を付与）
+      const sickWithInfo = data.sickReports.map(report => {
+        const cat = cats.find(c => c.id === report.catId);
+        const point = points.find(p => p.id === cat?.pointId);
+        return {
+          report,
+          cat,
+          pointName: point?.name || '不明'
+        };
+      });
+
+      setSummary({
+        sickReports: sickWithInfo,
+        unfedCats: data.unfedCats,
+        totalUnfed: data.totalUnfed
+      });
+      setLoading(false);
+    };
+
+    fetchData();
+  }, [date, cats, points]);
 
   const toggleZone = (zoneId: string) => {
     setExpandedZones(prev => ({ ...prev, [zoneId]: !prev[zoneId] }));
   };
 
-  // --- MOCK HISTORICAL DATA GENERATION ---
-  // Since we don't have a real backend with historical logs, we simulate the status
-  // of each cat for the selected DATE using the date timestamp as a seed.
-  // This ensures the data looks consistent for the same date if revisited.
-  
-  const { sickReports, unfedCatsByZone, unfedTotal } = useMemo(() => {
-    const seed = date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
-    
-    // Pseudo-random generator based on seed
-    const pseudoRandom = (input: number) => {
-      const x = Math.sin(seed + input) * 10000;
-      return x - Math.floor(x);
-    };
-
-    const sick: Array<{ cat: Cat, pointName: string, note: string }> = [];
-    const unfed: Record<string, Cat[]> = {};
-    let totalUnfedCount = 0;
-
-    cats.forEach((cat, index) => {
-      const rand = pseudoRandom(index);
-      const point = points.find(p => p.id === cat.pointId);
-      const pointName = point?.name || '不明';
-      const zoneId = point?.zoneId || 'unknown';
-
-      // 1. Determine "Sick/Injured" status (approx 5% chance)
-      // Note: This mocks a PAST report.
-      if (rand < 0.05) {
-        sick.push({
-          cat,
-          pointName,
-          note: rand < 0.02 ? '足を引きずっている様子。食欲はある。' : '目ヤニがひどい。ぐったりしている。'
-        });
-      }
-
-      // 2. Determine "Unfed" status (approx 30% chance)
-      if (rand > 0.6) {
-        if (!unfed[zoneId]) unfed[zoneId] = [];
-        unfed[zoneId].push(cat);
-        totalUnfedCount++;
-      }
-    });
-
-    return { sickReports: sick, unfedCatsByZone: unfed, unfedTotal: totalUnfedCount };
-  }, [date, cats, points]);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#fdfbf7] flex flex-col items-center justify-center p-4">
+        <Loader2 className="animate-spin text-orange-500 mb-4" size={40} />
+        <p className="text-gray-500 font-bold">記録を読み込み中...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#fdfbf7] p-4 pb-20">
@@ -93,30 +89,41 @@ export const DailyReport: React.FC<DailyReportProps> = ({ date, onBack, onHome, 
 
         <div className="space-y-8 animate-fade-in-up">
           
-          {/* Section 1: Health Alerts (Priority) */}
+          {/* Section 1: Health Alerts */}
           <section>
             <h2 className="text-lg font-bold text-gray-700 border-l-4 border-red-500 pl-3 mb-4 flex items-center gap-2">
               <AlertTriangle className="text-red-500" size={20} />
-              要対応報告
-              <span className="text-sm font-normal text-gray-500">({sickReports.length}件)</span>
+              異常・怪我の報告
+              <span className="text-sm font-normal text-gray-500">({summary?.sickReports.length || 0}件)</span>
             </h2>
 
-            {sickReports.length > 0 ? (
+            {summary && summary.sickReports.length > 0 ? (
               <div className="space-y-4">
-                {sickReports.map((report, idx) => (
+                {summary.sickReports.map((item, idx) => (
                   <div key={idx} className="bg-red-50 border border-red-100 rounded-xl p-4 shadow-sm flex gap-4">
-                    <img src={report.cat.imageUrl} alt={report.cat.name} className="w-16 h-16 rounded-lg object-cover bg-gray-200 flex-shrink-0" />
-                    <div className="flex-1">
+                    <div className="relative flex-shrink-0">
+                      <img 
+                        src={item.report.urgentPhoto || item.cat?.imageUrl} 
+                        alt={item.cat?.name} 
+                        className="w-20 h-20 rounded-lg object-cover bg-gray-200" 
+                      />
+                      {item.report.urgentPhoto && (
+                        <div className="absolute -top-1 -right-1 bg-red-500 text-white p-1 rounded-full shadow-sm">
+                          <Camera size={12} />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start">
-                        <h3 className="font-bold text-red-900">{report.cat.name}</h3>
-                        <span className="text-xs bg-white text-red-600 px-2 py-0.5 rounded border border-red-100 font-bold">要確認</span>
+                        <h3 className="font-bold text-red-900 truncate">{item.cat?.name || '不明なネコ'}</h3>
+                        <span className="text-[10px] bg-white text-red-600 px-2 py-0.5 rounded border border-red-100 font-bold whitespace-nowrap">要確認</span>
                       </div>
                       <p className="text-xs text-red-700 font-bold mt-1 flex items-center gap-1">
-                        <MapPin size={12} /> {report.pointName}
+                        <MapPin size={12} /> {item.pointName}
                       </p>
                       <div className="mt-2 p-2 bg-white/60 rounded text-xs text-gray-700 border border-red-100 flex items-start gap-2">
-                        <FileText size={12} className="mt-0.5 text-red-400" />
-                        {report.note}
+                        <FileText size={12} className="mt-0.5 text-red-400 flex-shrink-0" />
+                        <p className="italic">{item.report.urgentDetail || item.report.notes || '詳細なし'}</p>
                       </div>
                     </div>
                   </div>
@@ -125,7 +132,7 @@ export const DailyReport: React.FC<DailyReportProps> = ({ date, onBack, onHome, 
             ) : (
               <div className="bg-green-50 border border-green-100 p-4 rounded-xl flex items-center gap-3 text-green-800">
                   <CheckCircle size={20} />
-                  <span className="font-bold text-sm">この日の体調不良・怪我の報告はありません。</span>
+                  <span className="font-bold text-sm">この日の異常報告はありません。</span>
               </div>
             )}
           </section>
@@ -134,20 +141,20 @@ export const DailyReport: React.FC<DailyReportProps> = ({ date, onBack, onHome, 
           <section>
             <h2 className="text-lg font-bold text-gray-700 border-l-4 border-orange-500 pl-3 mb-4 flex items-center justify-between">
               <span>餌やり未完了ネコ</span>
-              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded font-bold">合計 {unfedTotal}匹</span>
+              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded font-bold">残り {summary?.totalUnfed || 0}匹</span>
             </h2>
 
             <div className="space-y-4">
               {zones.map(zone => {
-                const unfedList = unfedCatsByZone[zone.id] || [];
+                const unfedInZone = summary?.unfedCats.filter(c => c.zoneId === zone.id) || [];
                 const isExpanded = expandedZones[zone.id];
                 
-                if (unfedList.length === 0) {
+                if (unfedInZone.length === 0) {
                   return (
                     <div key={zone.id} className="bg-white p-4 rounded-xl border border-gray-100 flex justify-between items-center opacity-70">
                         <span className="font-bold text-gray-500">{zone.name}</span>
                         <span className="text-xs text-green-600 font-bold flex items-center gap-1">
-                          <CheckCircle size={12} /> 全頭完了
+                          <CheckCircle size={12} /> 完了
                         </span>
                     </div>
                   );
@@ -162,15 +169,15 @@ export const DailyReport: React.FC<DailyReportProps> = ({ date, onBack, onHome, 
                         <div className="flex items-center gap-3">
                           <span className="font-bold text-gray-800">{zone.name}</span>
                           <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold">
-                            未完了: {unfedList.length}匹
+                            未完了: {unfedInZone.length}匹
                           </span>
                         </div>
                         {isExpanded ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
                       </button>
                       
                       {isExpanded && (
-                        <div className="divide-y divide-gray-100">
-                          {unfedList.map(cat => {
+                        <div className="divide-y divide-gray-100 animate-fade-in">
+                          {unfedInZone.map(cat => {
                             const pointName = points.find(p => p.id === cat.pointId)?.name || '不明';
                             return (
                               <div key={cat.id} className="p-3 flex items-center gap-3 pl-6">

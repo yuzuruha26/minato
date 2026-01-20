@@ -1,14 +1,11 @@
 
-export interface Cat {
+// Defined to match usage in Login, App, and components
+export type UserRole = 'admin' | 'general';
+
+export interface User {
   id: string;
   name: string;
-  features: string;
-  imageUrl: string;
-  zoneId: string;
-  pointId: string;
-  subPointIds?: string[]; // 追加: 優先度の低いスポットID (最大3つ)
-  lastFed?: string; // ISO Date string
-  status: 'healthy' | 'injured' | 'sick' | 'unknown';
+  role: UserRole;
 }
 
 export interface Zone {
@@ -21,20 +18,53 @@ export interface FeedingPoint {
   id: string;
   name: string;
   zoneId: string;
-  description?: string;
   lat?: number;
   lng?: number;
+  lastWatered?: string;
+}
+
+export interface Cat {
+  id: string;
+  name: string;
+  features: string;
+  // Added imageUrl as it's heavily used in components (e.g., constants.ts, App.tsx, DailyReport.tsx)
+  imageUrl: string;
+
+  zoneId: string;
+  pointId: string;
+  subPointIds?: string[];
+
+  status: 'healthy' | 'sick' | 'injured';
+  // Added lastFed for tracking today's feeding status in App.tsx and CatStatus.tsx
+  lastFed?: string;
+
+  // 🔽 追加（重要）
+  mainImagePath?: string;   // 表示用トップ画像
+  aiImagePaths?: string[];  // AI類似判定用
+
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface Member {
+  id: string;
+  name: string;
+  role: UserRole;
+  phoneModel: string;
+  availableHours: string;
+  membershipExpiry: string;
+  contactMethod: string;
 }
 
 export interface Report {
   catId: string;
   fed: boolean;
   watered: boolean;
-  condition: 'good' | 'bad' | 'injured';
+  condition: string;
   notes: string;
-  urgentDetail?: string; // 要報告の詳細
-  urgentPhoto?: string;  // 要報告の写真 (Base64)
-  attentionDetail?: string; // 注意事項
+  urgentDetail?: string;
+  urgentPhoto?: string;
+  attentionDetail?: string;
   timestamp: number;
 }
 
@@ -44,22 +74,4 @@ export interface AIAnalysisResult {
   features: string[];
   suggestedCatIds: string[];
   message: string;
-}
-
-export type UserRole = 'admin' | 'general';
-
-export interface User {
-  id: string;
-  name: string;
-  role: UserRole;
-}
-
-export interface Member {
-  id: string;
-  name: string;
-  role: UserRole;
-  phoneModel: string;      // スマホの機種
-  availableHours: string;  // 活動可能時間
-  membershipExpiry: string; // 餌やり活動員証【会員有効期限】 (YYYY-MM-DD)
-  contactMethod: string;   // 管理者との現在連絡手段
 }
